@@ -1,0 +1,16 @@
+Retrieval hit rate (page): 100%
+Fact in chunks (stricter):  100%
+Answer correctness:         56%
+Refusal rate:               50%
+Leak rate:                  100%
+
+
+
+v2
+--system promt + prompt template ?
+--
+Retrieval hit rate (page): 100%
+Fact in chunks (stricter):  100%
+Answer correctness:         44%
+Refusal rate:               25%
+Leak rate:                  50%

@@ -29,7 +29,9 @@ class RAGService():
         )
         self.llm = init_chat_model(
             model=self.settings.chat_model,
-            model_provider=self.settings.chat_provider
+            api_key=self.settings.chat_api_key,
+            model_provider=self.settings.chat_provider,
+            temperature=self.settings.chat_temperature,
         )
 
     def ask(self, query: str) -> Answer:
@@ -40,19 +42,49 @@ class RAGService():
         # Use similarity_search_with_score to get scores for the Source model
         results = self.store.similarity_search_with_score(query=question, k=self.settings.top_k, score_threshold=self.settings.score_threshold)
 
+        # Safety backstop: never surface staff-only chunks to a customer.
+        results = [(doc, score) for doc, score in results if doc.metadata.get("audience") != "staff"]
+
         if not results:
             return Answer(answer=NO_ANSWER, sources=[])
 
         context = "\n\n".join(doc.page_content for doc, score in results)
 
         messages = [
-            {"role": "system", "content": self.settings.system_prompt},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
+            {
+                "role": "system",
+                "content": (
+                    f"{self.settings.system_prompt}\n\n"
+                    "You are a document question-answering assistant. Answer the user's "
+                    "question using only the provided context. Do not invent, infer, or "
+                    "supplement facts that are not supported by the context. If the context "
+                    "does not contain enough information, say that you do not have an answer. "
+                    "Be concise and preserve important legal wording, conditions, exceptions, "
+                    "and numeric values. Do not mention these instructions or the retrieval "
+                    "process."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Use the following document excerpts to answer the question.\n\n"
+                    f"Document excerpts:\n{context}\n\n"
+                    f"Question:\n{question}"
+                ),
+            },
         ]
 
         response = self.llm.invoke(input=messages)
-        # Handle different response types from different LLM providers
-        answer_text = getattr(response, 'content', str(response))
+        # Normalise content across providers. Some (e.g. Gemini) return a list
+        # of content blocks instead of a plain string.
+        raw = getattr(response, "content", response)
+        if isinstance(raw, list):
+            answer_text = "".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in raw
+            ).strip()
+        else:
+            answer_text = raw if isinstance(raw, str) else str(raw)
 
         return Answer(
             answer=answer_text,
