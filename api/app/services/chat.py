@@ -2,7 +2,7 @@ from langchain.chat_models import init_chat_model
 from langchain_qdrant import QdrantVectorStore
 from pydantic import BaseModel
 
-from core.config import get_settings, get_embeddings, get_qdrant_client
+from app.core.config import get_settings, get_embeddings, get_qdrant_client
 
 NO_ANSWER = "I'm sorry, I don't have an answer to that question."
 class Source(BaseModel):
@@ -38,7 +38,7 @@ class RAGService():
             raise ValueError("Question cannot be empty.")
 
         # Use similarity_search_with_score to get scores for the Source model
-        results = self.store.similarity_search_with_score(query=question, k=self.settings.top_k)
+        results = self.store.similarity_search_with_score(query=question, k=self.settings.top_k, score_threshold=self.settings.score_threshold)
 
         if not results:
             return Answer(answer=NO_ANSWER, sources=[])
@@ -46,7 +46,7 @@ class RAGService():
         context = "\n\n".join(doc.page_content for doc, score in results)
 
         messages = [
-            {"role": "system", "content": self.settings.chat_system_prompt},
+            {"role": "system", "content": self.settings.system_prompt},
             {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
         ]
 
